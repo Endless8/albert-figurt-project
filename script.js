@@ -83,20 +83,34 @@ function stopSharing() {
 function initPeerConnection() {
     peerConnection = new RTCPeerConnection(config);
     
+    const iceCandidates = [];
+    
     peerConnection.onicecandidate = event => {
-        if (event.candidate === null) {
+        console.log('ICE Candidate:', event.candidate);
+        if (event.candidate) {
+            iceCandidates.push(event.candidate);
+        } else {
+            // All ICE candidates gathered
+            console.log('ICE gathering complete');
             document.getElementById('offerAnswer').value = 
                 JSON.stringify(peerConnection.localDescription);
+            updateStatus('Offer/Answer ready - copy it!', 'connected');
         }
     };
     
+    peerConnection.onicegatheringstatechange = () => {
+        console.log('ICE gathering state:', peerConnection.iceGatheringState);
+    };
+    
     peerConnection.ontrack = event => {
+        console.log('Remote track received');
         remoteVideo.srcObject = event.streams[0];
         updateStatus('Connected', 'connected');
     };
     
     peerConnection.onconnectionstatechange = () => {
         const state = peerConnection.connectionState;
+        console.log('Connection state:', state);
         if (state === 'connected') {
             updateStatus('Connected', 'connected');
         } else if (state === 'disconnected' || state === 'failed') {
@@ -108,6 +122,7 @@ function initPeerConnection() {
     
     if (localStream) {
         localStream.getTracks().forEach(track => {
+            console.log('Adding track:', track.kind);
             peerConnection.addTrack(track, localStream);
         });
     }
@@ -119,11 +134,21 @@ async function createOffer() {
         return;
     }
     
+    console.log('Creating offer...');
     initPeerConnection();
     updateStatus('Creating offer...', 'connecting');
     
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
+    try {
+        const offer = await peerConnection.createOffer();
+        console.log('Offer created:', offer);
+        await peerConnection.setLocalDescription(offer);
+        console.log('Local description set, gathering ICE candidates...');
+        updateStatus('Gathering connection info...', 'connecting');
+    } catch (err) {
+        console.error('Error creating offer:', err);
+        alert('Error creating offer: ' + err.message);
+        updateStatus('Error', 'disconnected');
+    }
 }
 
 async function createAnswer() {

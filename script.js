@@ -129,26 +129,27 @@ function initPeerConnection() {
 }
 
 async function createOffer() {
+  try {
+      // Check peer connection and stream state before creating the offer
+    console.log("PeerConnection state (before):", pc.signalingState, pc.connectionState);
+    console.log("Local stream (before):", localStream);
+
+    // Make sure local stream is ready
     if (!localStream) {
-        alert('Please start your camera first!');
-        return;
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     }
-    
-    console.log('Creating offer...');
-    initPeerConnection();
-    updateStatus('Creating offer...', 'connecting');
-    
-    try {
-        const offer = await peerConnection.createOffer();
-        console.log('Offer created:', offer);
-        await peerConnection.setLocalDescription(offer);
-        console.log('Local description set, gathering ICE candidates...');
-        updateStatus('Gathering connection info...', 'connecting');
-    } catch (err) {
-        console.error('Error creating offer:', err);
-        alert('Error creating offer: ' + err.message);
-        updateStatus('Error', 'disconnected');
-    }
+
+    // Create and set local description
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Show in textarea
+    document.getElementById("offerTextarea").value = JSON.stringify(pc.localDescription);
+  } catch (err) {
+    console.error("Error creating offer:", err);
+    alert("Could not create offer: " + err.message);
+  }
 }
 
 async function createAnswer() {

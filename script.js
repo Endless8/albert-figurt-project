@@ -7,9 +7,14 @@ const config = {
     ]
 };
 
-const localVideo = document.getElementById('localVideo');
-const remoteVideo = document.getElementById('remoteVideo');
-const statusDiv = document.getElementById('status');
+let localVideo, remoteVideo, statusDiv;
+
+// Wait for DOM to be ready
+document.addEventListener('DOMContentLoaded', () => {
+    localVideo = document.getElementById('localVideo');
+    remoteVideo = document.getElementById('remoteVideo');
+    statusDiv = document.getElementById('status');
+});
 
 function updateStatus(message, type) {
     statusDiv.textContent = `Status: ${message}`;

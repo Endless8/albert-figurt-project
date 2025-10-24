@@ -83,6 +83,21 @@ body {
     background: #f0f0f0;
 }
 
+.peer-id {
+    margin-top: 15px;
+    padding: 15px;
+    background: #e8f5e9;
+    border: 2px solid #4caf50;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 14px;
+    word-break: break-all;
+}
+
+.peer-id strong {
+    color: #2e7d32;
+}
+
 /* Chat Interface */
 #chatInterface {
     animation: fadeIn 0.5s ease-in;

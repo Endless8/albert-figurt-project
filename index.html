@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Screen Share Audio Chat</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -12,10 +13,11 @@
         <div id="connectionPanel" class="panel">
             <h1>Screen Share Audio Chat</h1>
             <div class="connection-controls">
-                <input type="text" id="roomId" placeholder="Enter Room ID" />
+                <input type="text" id="roomId" placeholder="Enter Room ID or leave empty to create" />
                 <button id="connectBtn">Connect</button>
             </div>
             <div id="status">Disconnected</div>
+            <div id="peerId" class="peer-id hidden"></div>
         </div>
 
         <!-- Main Chat Interface (hidden initially) -->

@@ -14,6 +14,7 @@ let isAudioEnabled = true;
 let isVideoEnabled = false;
 let isScreenSharing = false;
 let pendingIceCandidates = [];
+let isOfferer = false; // Track who created the offer
 
 // DOM elements
 const localVideo = document.getElementById('localVideo');
@@ -114,6 +115,22 @@ function createPeerConnection() {
         }
     };
     
+    // Handle negotiation needed
+    peerConnection.onnegotiationneeded = async () => {
+        console.log('Negotiation needed');
+        if (isOfferer && peerConnection.signalingState === 'stable') {
+            try {
+                console.log('Creating new offer for renegotiation');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                localSignalArea.value = JSON.stringify(peerConnection.localDescription);
+                alert('Connection renegotiation needed! Please send the new signal to your peer.');
+            } catch (error) {
+                console.error('Renegotiation error:', error);
+            }
+        }
+    };
+    
     return peerConnection;
 }
 
@@ -125,6 +142,7 @@ async function createOffer() {
         }
         
         createPeerConnection();
+        isOfferer = true;
         updateStatus('connecting', 'Creating offer...');
         
         const offer = await peerConnection.createOffer();

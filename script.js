@@ -234,6 +234,9 @@ async function toggleVideo() {
             localVideo.srcObject = localStream;
             await localVideo.play().catch(e => console.log('Play error:', e));
             console.log('Local video updated and playing');
+            console.log('Video tracks in stream:', localStream.getVideoTracks().length);
+            console.log('Video track state:', localStream.getVideoTracks()[0]?.readyState);
+            console.log('Video element dimensions:', localVideo.videoWidth, 'x', localVideo.videoHeight);
             
             // Update peer connection tracks
             if (peerConnection) {

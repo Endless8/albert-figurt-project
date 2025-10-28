@@ -212,20 +212,34 @@ async function toggleVideo() {
     try {
         if (!isVideoEnabled) {
             // Enable video
-            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const videoStream = await navigator.mediaDevices.getUserMedia({ 
+                video: true,
+                audio: false 
+            });
             const videoTrack = videoStream.getVideoTracks()[0];
             
-            // Replace or add video track
-            const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-            if (sender) {
-                sender.replaceTrack(videoTrack);
-            } else if (peerConnection) {
-                peerConnection.addTrack(videoTrack, localStream);
+            // Stop old video track if exists
+            const oldVideoTrack = localStream.getVideoTracks()[0];
+            if (oldVideoTrack) {
+                oldVideoTrack.stop();
+                localStream.removeTrack(oldVideoTrack);
             }
             
-            // Add to local stream
+            // Add new video track to local stream
             localStream.addTrack(videoTrack);
+            
+            // Update local video display
             localVideo.srcObject = localStream;
+            
+            // Replace or add video track in peer connection
+            if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) {
+                    await sender.replaceTrack(videoTrack);
+                } else {
+                    peerConnection.addTrack(videoTrack, localStream);
+                }
+            }
             
             isVideoEnabled = true;
             toggleVideoBtn.classList.add('active');
@@ -239,10 +253,15 @@ async function toggleVideo() {
                 localStream.removeTrack(videoTrack);
                 
                 // Replace with null track in peer connection
-                const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(null);
+                if (peerConnection) {
+                    const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                    if (sender) {
+                        await sender.replaceTrack(null);
+                    }
                 }
+                
+                // Refresh local video display
+                localVideo.srcObject = localStream;
             }
             
             isVideoEnabled = false;

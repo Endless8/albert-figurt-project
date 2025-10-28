@@ -1,346 +1,380 @@
-// Application State
-let peer = null;
-let currentCall = null;
-let localStream = null;
-let localAudioStream = null;
-let remoteStream = null;
-let isAudioMuted = false;
-let isSharingScreen = false;
-let myPeerId = null;
+// WebRTC Configuration
+const config = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+};
 
-// DOM Elements
-const connectionPanel = document.getElementById('connectionPanel');
-const chatInterface = document.getElementById('chatInterface');
-const roomIdInput = document.getElementById('roomId');
-const connectBtn = document.getElementById('connectBtn');
-const statusDiv = document.getElementById('status');
-const peerIdDiv = document.getElementById('peerId');
+// State management
+let localStream = null;
+let screenStream = null;
+let peerConnection = null;
+let isAudioEnabled = true;
+let isVideoEnabled = false;
+let isScreenSharing = false;
+let pendingIceCandidates = [];
+
+// DOM elements
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
-const localPreview = document.getElementById('localPreview');
-const remotePreview = document.getElementById('remotePreview');
-const localTooltip = document.getElementById('localTooltip');
-const fullscreenOverlay = document.getElementById('fullscreenOverlay');
-const fullscreenVideo = document.getElementById('fullscreenVideo');
-const exitFullscreenBtn = document.getElementById('exitFullscreen');
+const localVideoWrapper = document.getElementById('localVideoWrapper');
 const toggleAudioBtn = document.getElementById('toggleAudio');
-const toggleScreenBtn = document.getElementById('toggleScreen');
-const disconnectBtn = document.getElementById('disconnectBtn');
+const toggleVideoBtn = document.getElementById('toggleVideo');
+const shareScreenBtn = document.getElementById('shareScreen');
+const endCallBtn = document.getElementById('endCall');
+const createOfferBtn = document.getElementById('createOffer');
+const createAnswerBtn = document.getElementById('createAnswer');
+const connectPeerBtn = document.getElementById('connectPeer');
+const copySignalBtn = document.getElementById('copySignal');
+const generateRoomBtn = document.getElementById('generateRoom');
+const localSignalArea = document.getElementById('localSignal');
+const remoteSignalArea = document.getElementById('remoteSignal');
+const roomIdInput = document.getElementById('roomId');
+const statusIndicator = document.getElementById('statusIndicator');
+const statusText = document.getElementById('statusText');
 
-// Initialize
-function init() {
-    // Set up event listeners
-    connectBtn.addEventListener('click', connect);
-    disconnectBtn.addEventListener('click', disconnect);
-    toggleAudioBtn.addEventListener('click', toggleAudio);
-    toggleScreenBtn.addEventListener('click', toggleScreenShare);
-    exitFullscreenBtn.addEventListener('click', exitFullscreen);
-    
-    // Preview click handlers
-    localPreview.addEventListener('click', () => {
-        // Show tooltip with instruction to minimize browser
-        localTooltip.classList.remove('hidden');
-        
-        // Hide tooltip after 3 seconds
-        setTimeout(() => {
-            localTooltip.classList.add('hidden');
-        }, 3000);
-    });
-    
-    remotePreview.addEventListener('click', () => {
-        showFullscreen(remoteVideo);
-    });
-}
-
-// Connect to room
-async function connect() {
-    const remotePeerId = roomIdInput.value.trim();
-
+// Initialize media stream
+async function initializeMedia() {
     try {
-        updateStatus('Initializing...');
-        
-        // Initialize PeerJS
-        peer = new Peer({
-            config: {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            }
-        });
-
-        // Wait for peer to open
-        await new Promise((resolve, reject) => {
-            peer.on('open', (id) => {
-                myPeerId = id;
-                console.log('My peer ID:', id);
-                resolve();
-            });
-            
-            peer.on('error', (err) => {
-                console.error('Peer error:', err);
-                reject(err);
-            });
-        });
-
-        // Start audio stream
-        await startAudioStream();
-        
-        // Start screen sharing
-        await startScreenShare();
-        
-        // Combine audio and video streams
-        const combinedStream = new MediaStream([
-            ...localAudioStream.getAudioTracks(),
-            ...localStream.getVideoTracks()
-        ]);
-
-        // If room ID provided, call that peer
-        if (remotePeerId) {
-            updateStatus('Calling peer...');
-            currentCall = peer.call(remotePeerId, combinedStream);
-            setupCallHandlers(currentCall);
-        } else {
-            // Show my peer ID for others to connect
-            peerIdDiv.innerHTML = `<strong>Your Peer ID:</strong> ${myPeerId}<br><small>Share this ID with others to connect</small>`;
-            peerIdDiv.classList.remove('hidden');
-            updateStatus('Waiting for connection...');
-        }
-
-        // Handle incoming calls
-        peer.on('call', (call) => {
-            console.log('Receiving call from:', call.peer);
-            updateStatus('Incoming call...');
-            
-            // Answer with our combined stream
-            call.answer(combinedStream);
-            currentCall = call;
-            setupCallHandlers(call);
-        });
-        
-        // Switch to chat interface
-        connectionPanel.classList.add('hidden');
-        chatInterface.classList.remove('hidden');
-        
-        isSharingScreen = true;
-        
-    } catch (error) {
-        console.error('Connection error:', error);
-        alert('Failed to connect: ' + error.message);
-        updateStatus('Connection failed');
-        cleanup();
-    }
-}
-
-// Setup call event handlers
-function setupCallHandlers(call) {
-    call.on('stream', (stream) => {
-        console.log('Received remote stream');
-        remoteStream = stream;
-        remoteVideo.srcObject = stream;
-        updateStatus('Connected');
-    });
-
-    call.on('close', () => {
-        console.log('Call closed');
-        updateStatus('Call ended');
-        if (remoteStream) {
-            remoteStream.getTracks().forEach(track => track.stop());
-            remoteStream = null;
-            remoteVideo.srcObject = null;
-        }
-    });
-
-    call.on('error', (err) => {
-        console.error('Call error:', err);
-        updateStatus('Call error: ' + err.type);
-    });
-}
-
-// Start audio stream
-async function startAudioStream() {
-    try {
-        localAudioStream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true, 
-            video: false 
-        });
-        console.log('Audio stream started');
-    } catch (error) {
-        console.error('Error accessing microphone:', error);
-        throw new Error('Could not access microphone. Please grant permission.');
-    }
-}
-
-// Start screen sharing
-async function startScreenShare() {
-    try {
-        localStream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-                cursor: 'always',
-                displaySurface: 'monitor'
-            },
-            audio: false
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false // Start with video disabled
         });
         
         localVideo.srcObject = localStream;
         
-        // Hide local video to prevent mirror chain
-        localPreview.classList.add('hidden-video');
+        // Set initial audio state
+        localStream.getAudioTracks()[0].enabled = isAudioEnabled;
         
-        // Handle screen share stop
-        localStream.getVideoTracks()[0].addEventListener('ended', () => {
-            console.log('Screen sharing stopped by user');
-            isSharingScreen = false;
-            localPreview.classList.remove('hidden-video');
-            updateToggleScreenButton();
-        });
-        
-        console.log('Screen sharing started');
+        updateStatus('connecting', 'Ready to connect');
     } catch (error) {
-        console.error('Error starting screen share:', error);
-        throw new Error('Could not start screen sharing. Please grant permission and select your screen.');
+        console.error('Error accessing media devices:', error);
+        alert('Could not access microphone. Please check permissions.');
+    }
+}
+
+// Update connection status
+function updateStatus(status, text) {
+    statusIndicator.className = `status-indicator ${status}`;
+    statusText.textContent = text;
+}
+
+// Create peer connection
+function createPeerConnection() {
+    peerConnection = new RTCPeerConnection(config);
+    
+    // Add local stream tracks
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    }
+    
+    // Handle incoming tracks
+    peerConnection.ontrack = (event) => {
+        if (remoteVideo.srcObject !== event.streams[0]) {
+            remoteVideo.srcObject = event.streams[0];
+            updateStatus('connected', 'Connected');
+        }
+    };
+    
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate === null) {
+            // All ICE candidates have been gathered
+            const signal = JSON.stringify(peerConnection.localDescription);
+            localSignalArea.value = signal;
+        }
+    };
+    
+    // Handle connection state changes
+    peerConnection.onconnectionstatechange = () => {
+        const state = peerConnection.connectionState;
+        console.log('Connection state:', state);
+        
+        if (state === 'connected') {
+            updateStatus('connected', 'Connected');
+        } else if (state === 'disconnected' || state === 'failed') {
+            updateStatus('disconnected', 'Disconnected');
+        }
+    };
+    
+    return peerConnection;
+}
+
+// Create offer
+async function createOffer() {
+    try {
+        if (!localStream) {
+            await initializeMedia();
+        }
+        
+        createPeerConnection();
+        updateStatus('connecting', 'Creating offer...');
+        
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        
+        localSignalArea.value = 'Gathering ICE candidates...';
+    } catch (error) {
+        console.error('Error creating offer:', error);
+        alert('Error creating offer: ' + error.message);
+    }
+}
+
+// Create answer
+async function createAnswer() {
+    try {
+        const signal = remoteSignalArea.value.trim();
+        if (!signal) {
+            alert('Please paste the peer\'s offer signal first');
+            return;
+        }
+        
+        if (!localStream) {
+            await initializeMedia();
+        }
+        
+        createPeerConnection();
+        updateStatus('connecting', 'Creating answer...');
+        
+        const offer = JSON.parse(signal);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        localSignalArea.value = 'Gathering ICE candidates...';
+    } catch (error) {
+        console.error('Error creating answer:', error);
+        alert('Error creating answer: ' + error.message);
+    }
+}
+
+// Connect to peer
+async function connectToPeer() {
+    try {
+        const signal = remoteSignalArea.value.trim();
+        if (!signal) {
+            alert('Please paste the peer\'s signal');
+            return;
+        }
+        
+        if (!peerConnection) {
+            alert('Please create an offer first');
+            return;
+        }
+        
+        updateStatus('connecting', 'Connecting...');
+        
+        const answer = JSON.parse(signal);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (error) {
+        console.error('Error connecting to peer:', error);
+        alert('Error connecting: ' + error.message);
     }
 }
 
 // Toggle audio
 function toggleAudio() {
-    if (localAudioStream) {
-        const audioTrack = localAudioStream.getAudioTracks()[0];
-        audioTrack.enabled = !audioTrack.enabled;
-        isAudioMuted = !audioTrack.enabled;
-        
-        updateToggleAudioButton();
+    if (localStream) {
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) {
+            isAudioEnabled = !isAudioEnabled;
+            audioTrack.enabled = isAudioEnabled;
+            
+            toggleAudioBtn.classList.toggle('active', isAudioEnabled);
+            toggleAudioBtn.querySelector('.label').textContent = isAudioEnabled ? 'Mic On' : 'Mic Off';
+            toggleAudioBtn.querySelector('.icon').textContent = isAudioEnabled ? '🎤' : '🔇';
+        }
     }
 }
 
-// Update toggle audio button
-function updateToggleAudioButton() {
-    const span = toggleAudioBtn.querySelector('span:last-child');
-    span.textContent = isAudioMuted ? 'Unmute' : 'Mute';
-    toggleAudioBtn.style.background = isAudioMuted ? '#e74c3c' : '#667eea';
-}
-
-// Toggle screen share
-async function toggleScreenShare() {
-    if (isSharingScreen) {
-        // Stop screen sharing
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-            localVideo.srcObject = null;
-            localPreview.classList.remove('hidden-video');
-        }
-        isSharingScreen = false;
-        
-        // Update call with audio only
-        if (currentCall && localAudioStream) {
-            const sender = currentCall.peerConnection.getSenders().find(s => s.track?.kind === 'video');
+// Toggle video
+async function toggleVideo() {
+    try {
+        if (!isVideoEnabled) {
+            // Enable video
+            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const videoTrack = videoStream.getVideoTracks()[0];
+            
+            // Replace or add video track
+            const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
             if (sender) {
-                currentCall.peerConnection.removeTrack(sender);
+                sender.replaceTrack(videoTrack);
+            } else if (peerConnection) {
+                peerConnection.addTrack(videoTrack, localStream);
             }
+            
+            // Add to local stream
+            localStream.addTrack(videoTrack);
+            localVideo.srcObject = localStream;
+            
+            isVideoEnabled = true;
+            toggleVideoBtn.classList.add('active');
+            toggleVideoBtn.querySelector('.label').textContent = 'Cam On';
+            toggleVideoBtn.querySelector('.icon').textContent = '📷';
+        } else {
+            // Disable video
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.stop();
+                localStream.removeTrack(videoTrack);
+                
+                // Replace with null track in peer connection
+                const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(null);
+                }
+            }
+            
+            isVideoEnabled = false;
+            toggleVideoBtn.classList.remove('active');
+            toggleVideoBtn.querySelector('.label').textContent = 'Cam Off';
+            toggleVideoBtn.querySelector('.icon').textContent = '📷';
         }
-    } else {
-        // Start screen sharing
-        try {
-            await startScreenShare();
+    } catch (error) {
+        console.error('Error toggling video:', error);
+        alert('Error toggling video: ' + error.message);
+    }
+}
+
+// Share screen
+async function shareScreen() {
+    try {
+        if (!isScreenSharing) {
+            // Start screen sharing
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: true,
+                audio: false
+            });
             
-            // Update call with new video track
-            if (currentCall && localStream) {
-                const videoTrack = localStream.getVideoTracks()[0];
-                currentCall.peerConnection.addTrack(videoTrack, localStream);
+            const screenTrack = screenStream.getVideoTracks()[0];
+            
+            // Replace video track with screen track
+            const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+                await sender.replaceTrack(screenTrack);
+            } else if (peerConnection) {
+                peerConnection.addTrack(screenTrack, screenStream);
             }
             
-            isSharingScreen = true;
-        } catch (error) {
-            console.error('Error toggling screen share:', error);
-            alert('Failed to start screen sharing: ' + error.message);
+            // Minimize local video to prevent mirror loop
+            localVideoWrapper.classList.add('minimized');
+            
+            // Handle screen share stop
+            screenTrack.onended = () => {
+                stopScreenShare();
+            };
+            
+            isScreenSharing = true;
+            shareScreenBtn.classList.add('active');
+            shareScreenBtn.querySelector('.label').textContent = 'Stop Share';
+            shareScreenBtn.querySelector('.icon').textContent = '🛑';
+        } else {
+            stopScreenShare();
+        }
+    } catch (error) {
+        console.error('Error sharing screen:', error);
+        if (error.name !== 'NotAllowedError') {
+            alert('Error sharing screen: ' + error.message);
         }
     }
+}
+
+// Stop screen sharing
+async function stopScreenShare() {
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        
+        // Restore local video to normal size
+        localVideoWrapper.classList.remove('minimized');
+        
+        // Replace screen track with camera track or null
+        const sender = peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+        if (sender) {
+            if (isVideoEnabled && localStream.getVideoTracks()[0]) {
+                await sender.replaceTrack(localStream.getVideoTracks()[0]);
+            } else {
+                await sender.replaceTrack(null);
+            }
+        }
+        
+        screenStream = null;
+        isScreenSharing = false;
+        shareScreenBtn.classList.remove('active');
+        shareScreenBtn.querySelector('.label').textContent = 'Share';
+        shareScreenBtn.querySelector('.icon').textContent = '🖥️';
+    }
+}
+
+// End call
+function endCall() {
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
     
-    updateToggleScreenButton();
-}
-
-// Update toggle screen button
-function updateToggleScreenButton() {
-    const span = toggleScreenBtn.querySelector('span:last-child');
-    span.textContent = isSharingScreen ? 'Stop Sharing' : 'Start Sharing';
-    toggleScreenBtn.style.background = isSharingScreen ? '#e74c3c' : '#667eea';
-}
-
-// Show fullscreen
-function showFullscreen(videoElement) {
-    fullscreenVideo.srcObject = videoElement.srcObject;
-    fullscreenOverlay.classList.remove('hidden');
-}
-
-// Exit fullscreen
-function exitFullscreen() {
-    fullscreenOverlay.classList.add('hidden');
-    fullscreenVideo.srcObject = null;
-}
-
-// Disconnect
-function disconnect() {
-    cleanup();
-    
-    // Reset UI
-    chatInterface.classList.add('hidden');
-    connectionPanel.classList.remove('hidden');
-    peerIdDiv.classList.add('hidden');
-    roomIdInput.value = '';
-    
-    updateStatus('Disconnected');
-}
-
-// Cleanup resources
-function cleanup() {
-    // Stop all tracks
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
     }
-    if (localAudioStream) {
-        localAudioStream.getTracks().forEach(track => track.stop());
-        localAudioStream = null;
-    }
-    if (remoteStream) {
-        remoteStream.getTracks().forEach(track => track.stop());
-        remoteStream = null;
+    
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        screenStream = null;
     }
     
-    // Close call
-    if (currentCall) {
-        currentCall.close();
-        currentCall = null;
-    }
-    
-    // Destroy peer
-    if (peer) {
-        peer.destroy();
-        peer = null;
-    }
-    
-    // Reset videos
     localVideo.srcObject = null;
     remoteVideo.srcObject = null;
-    localPreview.classList.remove('hidden-video');
+    localSignalArea.value = '';
+    remoteSignalArea.value = '';
     
-    // Reset state
-    isAudioMuted = false;
-    isSharingScreen = false;
-    myPeerId = null;
+    isAudioEnabled = true;
+    isVideoEnabled = false;
+    isScreenSharing = false;
+    
+    toggleAudioBtn.classList.add('active');
+    toggleVideoBtn.classList.remove('active');
+    shareScreenBtn.classList.remove('active');
+    localVideoWrapper.classList.remove('minimized');
+    
+    updateStatus('disconnected', 'Call ended');
 }
 
-// Update status
-function updateStatus(message) {
-    statusDiv.textContent = message;
+// Copy signal to clipboard
+function copySignal() {
+    localSignalArea.select();
+    document.execCommand('copy');
+    
+    const originalText = copySignalBtn.textContent;
+    copySignalBtn.textContent = 'Copied!';
+    setTimeout(() => {
+        copySignalBtn.textContent = originalText;
+    }, 2000);
 }
 
-// Initialize on load
-init();
+// Generate random room ID
+function generateRoomId() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let roomId = '';
+    for (let i = 0; i < 8; i++) {
+        roomId += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    roomIdInput.value = roomId;
+}
 
-console.log('Screen Share Audio Chat initialized with PeerJS');
-console.log('Instructions:');
-console.log('1. First user: Click Connect without entering a Room ID');
-console.log('2. Copy the generated Peer ID');
-console.log('3. Second user: Paste the Peer ID and click Connect');
+// Event listeners
+toggleAudioBtn.addEventListener('click', toggleAudio);
+toggleVideoBtn.addEventListener('click', toggleVideo);
+shareScreenBtn.addEventListener('click', shareScreen);
+endCallBtn.addEventListener('click', endCall);
+createOfferBtn.addEventListener('click', createOffer);
+createAnswerBtn.addEventListener('click', createAnswer);
+connectPeerBtn.addEventListener('click', connectToPeer);
+copySignalBtn.addEventListener('click', copySignal);
+generateRoomBtn.addEventListener('click', generateRoomId);
+
+// Initialize on page load
+updateStatus('disconnected', 'Disconnected');

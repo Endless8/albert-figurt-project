@@ -81,8 +81,8 @@ function createPeerConnection() {
     
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
-        if (event.candidate === null) {
-            // All ICE candidates have been gathered
+        // Update signal with each candidate or when gathering is complete
+        if (peerConnection.localDescription) {
             const signal = JSON.stringify(peerConnection.localDescription);
             localSignalArea.value = signal;
         }
@@ -116,7 +116,15 @@ async function createOffer() {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
         
-        localSignalArea.value = 'Gathering ICE candidates...';
+        // Show signal immediately
+        localSignalArea.value = JSON.stringify(peerConnection.localDescription);
+        
+        // Also set a timeout fallback
+        setTimeout(() => {
+            if (peerConnection && peerConnection.localDescription) {
+                localSignalArea.value = JSON.stringify(peerConnection.localDescription);
+            }
+        }, 1000);
     } catch (error) {
         console.error('Error creating offer:', error);
         alert('Error creating offer: ' + error.message);
@@ -145,7 +153,15 @@ async function createAnswer() {
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         
-        localSignalArea.value = 'Gathering ICE candidates...';
+        // Show signal immediately
+        localSignalArea.value = JSON.stringify(peerConnection.localDescription);
+        
+        // Also set a timeout fallback
+        setTimeout(() => {
+            if (peerConnection && peerConnection.localDescription) {
+                localSignalArea.value = JSON.stringify(peerConnection.localDescription);
+            }
+        }, 1000);
     } catch (error) {
         console.error('Error creating answer:', error);
         alert('Error creating answer: ' + error.message);

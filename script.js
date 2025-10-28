@@ -73,8 +73,22 @@ function createPeerConnection() {
     
     // Handle incoming tracks
     peerConnection.ontrack = (event) => {
+        console.log('Received remote track:', event.track.kind, 'readyState:', event.track.readyState);
+        console.log('Remote stream:', event.streams[0]);
+        console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => t.kind));
+        
         if (remoteVideo.srcObject !== event.streams[0]) {
             remoteVideo.srcObject = event.streams[0];
+            console.log('Remote video srcObject set');
+            
+            // Force play and log result
+            remoteVideo.play().then(() => {
+                console.log('Remote video playing successfully');
+                setTimeout(() => {
+                    console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+                }, 1000);
+            }).catch(e => console.error('Remote video play error:', e));
+            
             updateStatus('connected', 'Connected');
         }
     };

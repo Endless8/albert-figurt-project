@@ -3,67 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Screen Share Audio Chat</title>
+    <title>WebRTC Video Chat</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-    <div id="app">
-        <!-- Connection Panel -->
-        <div id="connectionPanel" class="panel">
-            <h1>Screen Share Audio Chat</h1>
-            <div class="connection-controls">
-                <input type="text" id="roomId" placeholder="Enter Room ID or leave empty to create" />
-                <button id="connectBtn">Connect</button>
+    <div class="container">
+        <header>
+            <h1>WebRTC Video Chat</h1>
+            <div class="connection-info">
+                <span id="statusIndicator" class="status-indicator disconnected"></span>
+                <span id="statusText">Disconnected</span>
             </div>
-            <div id="status">Disconnected</div>
-            <div id="peerId" class="peer-id hidden"></div>
+        </header>
+
+        <div class="video-container">
+            <div class="video-wrapper" id="remoteVideoWrapper">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-label">Remote User</div>
+            </div>
+            <div class="video-wrapper local" id="localVideoWrapper">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="video-label">You</div>
+            </div>
         </div>
 
-        <!-- Main Chat Interface (hidden initially) -->
-        <div id="chatInterface" class="hidden">
-            <div id="screensContainer">
-                <!-- Local Screen Preview -->
-                <div class="screen-preview" id="localPreview">
-                    <video id="localVideo" autoplay muted></video>
-                    <div class="sharing-indicator">
-                        <div class="icon">🖥️</div>
-                        <div class="text">You are sharing your screen</div>
-                    </div>
-                    <div class="preview-label">Your Screen</div>
-                    <div class="preview-tooltip hidden" id="localTooltip">
-                        💡 Minimize this browser window to see your desktop
-                    </div>
+        <div class="controls">
+            <button id="toggleAudio" class="control-btn active" title="Toggle Audio">
+                <span class="icon">🎤</span>
+                <span class="label">Mic On</span>
+            </button>
+            <button id="toggleVideo" class="control-btn" title="Toggle Video">
+                <span class="icon">📷</span>
+                <span class="label">Cam Off</span>
+            </button>
+            <button id="shareScreen" class="control-btn" title="Share Screen">
+                <span class="icon">🖥️</span>
+                <span class="label">Share</span>
+            </button>
+            <button id="endCall" class="control-btn danger" title="End Call">
+                <span class="icon">📞</span>
+                <span class="label">End</span>
+            </button>
+        </div>
+
+        <div class="connection-panel">
+            <div class="setup-section">
+                <h3>Connection Setup</h3>
+                <div class="input-group">
+                    <label for="roomId">Room ID:</label>
+                    <input type="text" id="roomId" placeholder="Enter or generate room ID">
+                    <button id="generateRoom" class="secondary-btn">Generate</button>
                 </div>
-
-                <!-- Remote Screen Preview -->
-                <div class="screen-preview" id="remotePreview">
-                    <video id="remoteVideo" autoplay></video>
-                    <div class="preview-label">Remote Screen</div>
+                <div class="button-group">
+                    <button id="createOffer" class="primary-btn">Create Offer</button>
+                    <button id="createAnswer" class="primary-btn">Create Answer</button>
                 </div>
             </div>
 
-            <!-- Fullscreen Overlay -->
-            <div id="fullscreenOverlay" class="hidden">
-                <video id="fullscreenVideo" autoplay></video>
-                <button id="exitFullscreen" class="exit-btn">Exit Fullscreen</button>
+            <div class="signal-section">
+                <label for="localSignal">Your Signal (send to peer):</label>
+                <textarea id="localSignal" readonly placeholder="Signal will appear here..."></textarea>
+                <button id="copySignal" class="secondary-btn">Copy</button>
+                
+                <label for="remoteSignal">Peer's Signal (paste here):</label>
+                <textarea id="remoteSignal" placeholder="Paste peer's signal here..."></textarea>
+                <button id="connectPeer" class="primary-btn">Connect</button>
             </div>
+        </div>
 
-            <!-- Controls -->
-            <div id="controls">
-                <button id="toggleAudio" class="control-btn">
-                    <span class="icon">🎤</span>
-                    <span>Mute</span>
-                </button>
-                <button id="toggleScreen" class="control-btn">
-                    <span class="icon">🖥️</span>
-                    <span>Stop Sharing</span>
-                </button>
-                <button id="disconnectBtn" class="control-btn danger">
-                    <span class="icon">📞</span>
-                    <span>Disconnect</span>
-                </button>
-            </div>
+        <div class="info-panel">
+            <p><strong>Instructions:</strong></p>
+            <ol>
+                <li>One person clicks "Create Offer", copies their signal and sends it to the other person</li>
+                <li>The other person pastes the signal, clicks "Create Answer", then copies and sends their signal back</li>
+                <li>The first person pastes the answer signal and clicks "Connect"</li>
+                <li>Connection established! Audio starts automatically, camera is off by default</li>
+            </ol>
+            <p><strong>Note:</strong> When screen sharing, your local video will minimize to prevent mirror loop effects.</p>
         </div>
     </div>
 

@@ -211,12 +211,14 @@ function toggleAudio() {
 async function toggleVideo() {
     try {
         if (!isVideoEnabled) {
+            console.log('Enabling video...');
             // Enable video
             const videoStream = await navigator.mediaDevices.getUserMedia({ 
-                video: true,
+                video: { width: 1280, height: 720 },
                 audio: false 
             });
             const videoTrack = videoStream.getVideoTracks()[0];
+            console.log('Video track obtained:', videoTrack);
             
             // Stop old video track if exists
             const oldVideoTrack = localStream.getVideoTracks()[0];
@@ -227,16 +229,24 @@ async function toggleVideo() {
             
             // Add new video track to local stream
             localStream.addTrack(videoTrack);
+            console.log('Video track added to local stream');
             
             // Update local video display
+            localVideo.srcObject = null; // Reset first
             localVideo.srcObject = localStream;
+            console.log('Local video srcObject updated');
+            
+            // Force play
+            await localVideo.play().catch(e => console.log('Play error:', e));
             
             // Replace or add video track in peer connection
             if (peerConnection) {
                 const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
                 if (sender) {
+                    console.log('Replacing video track in peer connection');
                     await sender.replaceTrack(videoTrack);
                 } else {
+                    console.log('Adding video track to peer connection');
                     peerConnection.addTrack(videoTrack, localStream);
                 }
             }
@@ -245,7 +255,9 @@ async function toggleVideo() {
             toggleVideoBtn.classList.add('active');
             toggleVideoBtn.querySelector('.label').textContent = 'Cam On';
             toggleVideoBtn.querySelector('.icon').textContent = '📷';
+            console.log('Video enabled successfully');
         } else {
+            console.log('Disabling video...');
             // Disable video
             const videoTrack = localStream.getVideoTracks()[0];
             if (videoTrack) {
@@ -259,15 +271,13 @@ async function toggleVideo() {
                         await sender.replaceTrack(null);
                     }
                 }
-                
-                // Refresh local video display
-                localVideo.srcObject = localStream;
             }
             
             isVideoEnabled = false;
             toggleVideoBtn.classList.remove('active');
             toggleVideoBtn.querySelector('.label').textContent = 'Cam Off';
             toggleVideoBtn.querySelector('.icon').textContent = '📷';
+            console.log('Video disabled');
         }
     } catch (error) {
         console.error('Error toggling video:', error);

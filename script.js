@@ -212,42 +212,53 @@ async function toggleVideo() {
     try {
         if (!isVideoEnabled) {
             console.log('Enabling video...');
-            // Enable video
-            const videoStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 1280, height: 720 },
-                audio: false 
-            });
-            const videoTrack = videoStream.getVideoTracks()[0];
-            console.log('Video track obtained:', videoTrack);
             
-            // Stop old video track if exists
-            const oldVideoTrack = localStream.getVideoTracks()[0];
-            if (oldVideoTrack) {
-                oldVideoTrack.stop();
-                localStream.removeTrack(oldVideoTrack);
+            // Get new stream with both audio and video
+            const newStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 1280, height: 720 },
+                audio: true
+            });
+            
+            console.log('New stream obtained with video');
+            
+            // Stop old stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
             }
             
-            // Add new video track to local stream
-            localStream.addTrack(videoTrack);
-            console.log('Video track added to local stream');
+            // Set new stream
+            localStream = newStream;
+            localStream.getAudioTracks()[0].enabled = isAudioEnabled;
             
-            // Update local video display
-            localVideo.srcObject = null; // Reset first
+            // Update local video
             localVideo.srcObject = localStream;
-            console.log('Local video srcObject updated');
-            
-            // Force play
             await localVideo.play().catch(e => console.log('Play error:', e));
+            console.log('Local video updated and playing');
             
-            // Replace or add video track in peer connection
+            // Update peer connection tracks
             if (peerConnection) {
-                const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
-                if (sender) {
-                    console.log('Replacing video track in peer connection');
-                    await sender.replaceTrack(videoTrack);
-                } else {
-                    console.log('Adding video track to peer connection');
+                const senders = peerConnection.getSenders();
+                
+                // Replace audio track
+                const audioSender = senders.find(s => s.track?.kind === 'audio');
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioSender && audioTrack) {
+                    await audioSender.replaceTrack(audioTrack);
+                    console.log('Audio track replaced');
+                } else if (audioTrack) {
+                    peerConnection.addTrack(audioTrack, localStream);
+                    console.log('Audio track added');
+                }
+                
+                // Replace or add video track
+                const videoSender = senders.find(s => s.track?.kind === 'video');
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoSender && videoTrack) {
+                    await videoSender.replaceTrack(videoTrack);
+                    console.log('Video track replaced');
+                } else if (videoTrack) {
                     peerConnection.addTrack(videoTrack, localStream);
+                    console.log('Video track added');
                 }
             }
             
@@ -256,20 +267,43 @@ async function toggleVideo() {
             toggleVideoBtn.querySelector('.label').textContent = 'Cam On';
             toggleVideoBtn.querySelector('.icon').textContent = '📷';
             console.log('Video enabled successfully');
+            
         } else {
             console.log('Disabling video...');
-            // Disable video
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.stop();
-                localStream.removeTrack(videoTrack);
+            
+            // Get new stream with only audio
+            const newStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: true,
+                video: false
+            });
+            
+            // Stop old stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Set new stream
+            localStream = newStream;
+            localStream.getAudioTracks()[0].enabled = isAudioEnabled;
+            
+            // Update local video
+            localVideo.srcObject = localStream;
+            
+            // Update peer connection tracks
+            if (peerConnection) {
+                const senders = peerConnection.getSenders();
                 
-                // Replace with null track in peer connection
-                if (peerConnection) {
-                    const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
-                    if (sender) {
-                        await sender.replaceTrack(null);
-                    }
+                // Replace audio track
+                const audioSender = senders.find(s => s.track?.kind === 'audio');
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioSender && audioTrack) {
+                    await audioSender.replaceTrack(audioTrack);
+                }
+                
+                // Remove video track
+                const videoSender = senders.find(s => s.track?.kind === 'video');
+                if (videoSender) {
+                    await videoSender.replaceTrack(null);
                 }
             }
             

@@ -108,6 +108,11 @@ header h1 {
     height: 100%;
     object-fit: cover;
     background: #1a1a1a;
+    display: block;
+}
+
+.video-wrapper video:empty {
+    background: #1a1a1a;
 }
 
 .video-label {

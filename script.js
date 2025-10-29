@@ -78,20 +78,40 @@ function createPeerConnection() {
         console.log('Remote stream:', event.streams[0]);
         console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => t.kind));
         
-        if (remoteVideo.srcObject !== event.streams[0]) {
-            remoteVideo.srcObject = event.streams[0];
-            console.log('Remote video srcObject set');
-            
-            // Force play and log result
-            remoteVideo.play().then(() => {
-                console.log('Remote video playing successfully');
-                setTimeout(() => {
-                    console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
-                }, 1000);
-            }).catch(e => console.error('Remote video play error:', e));
-            
-            updateStatus('connected', 'Connected');
-        }
+        const stream = event.streams[0];
+        
+        // Always update the remote video srcObject to ensure we get new tracks
+        remoteVideo.srcObject = stream;
+        console.log('Remote video srcObject set');
+        
+        // Monitor track state changes
+        event.track.onended = () => {
+            console.log('Remote track ended:', event.track.kind);
+        };
+        
+        event.track.onmute = () => {
+            console.log('Remote track muted:', event.track.kind);
+            if (event.track.kind === 'video') {
+                remoteVideo.style.opacity = '0.3';
+            }
+        };
+        
+        event.track.onunmute = () => {
+            console.log('Remote track unmuted:', event.track.kind);
+            if (event.track.kind === 'video') {
+                remoteVideo.style.opacity = '1';
+            }
+        };
+        
+        // Force play and log result
+        remoteVideo.play().then(() => {
+            console.log('Remote video playing successfully');
+            setTimeout(() => {
+                console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+            }, 1000);
+        }).catch(e => console.error('Remote video play error:', e));
+        
+        updateStatus('connected', 'Connected');
     };
     
     // Handle ICE candidates
@@ -177,6 +197,7 @@ async function createAnswer() {
         }
         
         createPeerConnection();
+        isOfferer = false;
         updateStatus('connecting', 'Creating answer...');
         
         const offer = JSON.parse(signal);
@@ -237,6 +258,19 @@ function toggleAudio() {
             toggleAudioBtn.querySelector('.icon').textContent = isAudioEnabled ? '🎤' : '🔇';
         }
     }
+}
+
+// Create a black video track
+function createBlackVideoTrack() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 480;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const stream = canvas.captureStream(1);
+    return stream.getVideoTracks()[0];
 }
 
 // Toggle video
@@ -306,39 +340,48 @@ async function toggleVideo() {
         } else {
             console.log('Disabling video...');
             
-            // Get new stream with only audio
-            const newStream = await navigator.mediaDevices.getUserMedia({ 
+            // Stop video tracks
+            const videoTracks = localStream.getVideoTracks();
+            videoTracks.forEach(track => track.stop());
+            
+            // Replace with black video track in peer connection
+            if (peerConnection) {
+                const videoSender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+                if (videoSender) {
+                    const blackTrack = createBlackVideoTrack();
+                    await videoSender.replaceTrack(blackTrack);
+                    console.log('Replaced with black video track');
+                    
+                    // Stop the black track after a moment (peer will see black frame)
+                    setTimeout(() => blackTrack.stop(), 100);
+                }
+            }
+            
+            // Get new stream with only audio for local display
+            const audioOnlyStream = await navigator.mediaDevices.getUserMedia({ 
                 audio: true,
                 video: false
             });
             
-            // Stop old stream
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+            // Stop old audio track
+            const oldAudioTrack = localStream.getAudioTracks()[0];
+            if (oldAudioTrack) {
+                oldAudioTrack.stop();
             }
             
             // Set new stream
-            localStream = newStream;
+            localStream = audioOnlyStream;
             localStream.getAudioTracks()[0].enabled = isAudioEnabled;
             
-            // Update local video
+            // Update local video display
             localVideo.srcObject = localStream;
             
-            // Update peer connection tracks
+            // Update audio track in peer connection
             if (peerConnection) {
-                const senders = peerConnection.getSenders();
-                
-                // Replace audio track
-                const audioSender = senders.find(s => s.track?.kind === 'audio');
+                const audioSender = peerConnection.getSenders().find(s => s.track?.kind === 'audio');
                 const audioTrack = localStream.getAudioTracks()[0];
                 if (audioSender && audioTrack) {
                     await audioSender.replaceTrack(audioTrack);
-                }
-                
-                // Remove video track
-                const videoSender = senders.find(s => s.track?.kind === 'video');
-                if (videoSender) {
-                    await videoSender.replaceTrack(null);
                 }
             }
             

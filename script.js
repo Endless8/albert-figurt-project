@@ -81,17 +81,26 @@ function createPeerConnection() {
     
     // Add local stream tracks
     if (localStream) {
-        localStream.getTracks().forEach(track => {
-            const sender = peerConnection.addTrack(track, localStream);
-            
-            // If video is disabled, immediately replace with black track
-            if (track.kind === 'video' && !isVideoEnabled) {
-                const blackTrack = createBlackVideoTrack();
-                sender.replaceTrack(blackTrack);
-                // Keep black track running
-                setTimeout(() => {}, 100);
-            }
-        });
+        const audioTrack = localStream.getAudioTracks()[0];
+        const videoTrack = localStream.getVideoTracks()[0];
+        
+        // Add audio track
+        if (audioTrack) {
+            peerConnection.addTrack(audioTrack, localStream);
+            console.log('Added audio track to peer connection');
+        }
+        
+        // Add video track (real or black depending on state)
+        if (videoTrack && isVideoEnabled) {
+            peerConnection.addTrack(videoTrack, localStream);
+            console.log('Added real video track to peer connection');
+        } else {
+            // Add black video track as placeholder
+            const blackTrack = createBlackVideoTrack();
+            activeBlackTracks.push(blackTrack);
+            peerConnection.addTrack(blackTrack, localStream);
+            console.log('Added black video track to peer connection');
+        }
     }
     
     // Handle incoming tracks
@@ -159,18 +168,8 @@ function createPeerConnection() {
     
     // Handle negotiation needed
     peerConnection.onnegotiationneeded = async () => {
-        console.log('Negotiation needed');
-        if (isOfferer && peerConnection.signalingState === 'stable') {
-            try {
-                console.log('Creating new offer for renegotiation');
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                localSignalArea.value = JSON.stringify(peerConnection.localDescription);
-                alert('Connection renegotiation needed! Please send the new signal to your peer.');
-            } catch (error) {
-                console.error('Renegotiation error:', error);
-            }
-        }
+        console.log('Negotiation needed - ignoring (using track replacement instead)');
+        // We handle track changes via replaceTrack, so we don't need renegotiation
     };
     
     return peerConnection;
@@ -292,8 +291,17 @@ function createBlackVideoTrack() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     const stream = canvas.captureStream(1);
-    return stream.getVideoTracks()[0];
+    const track = stream.getVideoTracks()[0];
+    
+    // Keep the track alive by storing it
+    track._canvas = canvas;
+    track._stream = stream;
+    
+    return track;
 }
+
+// Store black tracks to keep them alive
+let activeBlackTracks = [];
 
 // Toggle video
 async function toggleVideo() {
@@ -304,38 +312,12 @@ async function toggleVideo() {
             // Remove the black filter from local video
             localVideo.style.filter = 'none';
             
-            // Get the real camera track (it's already in localStream)
+            // Get the real camera track from localStream
             const videoTrack = localStream.getVideoTracks()[0];
+            console.log('Real video track:', videoTrack?.readyState);
             
-            if (!videoTrack || videoTrack.readyState === 'ended') {
-                // If no track exists or it's ended, get a new one
-                const videoStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { width: 1280, height: 720 },
-                    audio: false 
-                });
-                const newVideoTrack = videoStream.getVideoTracks()[0];
-                
-                // Stop old video track if exists
-                if (videoTrack) {
-                    videoTrack.stop();
-                    localStream.removeTrack(videoTrack);
-                }
-                
-                // Add new video track
-                localStream.addTrack(newVideoTrack);
-                localVideo.srcObject = localStream;
-                
-                // Replace in peer connection
-                if (peerConnection) {
-                    const videoSender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
-                    if (videoSender) {
-                        await videoSender.replaceTrack(newVideoTrack);
-                    } else {
-                        peerConnection.addTrack(newVideoTrack, localStream);
-                    }
-                }
-            } else {
-                // Track exists, just replace the black track with real track
+            if (videoTrack && videoTrack.readyState === 'live') {
+                // Track exists and is live, replace black track with it
                 if (peerConnection) {
                     const videoSender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
                     if (videoSender) {
@@ -343,6 +325,10 @@ async function toggleVideo() {
                         console.log('Replaced black track with real camera track');
                     }
                 }
+            } else {
+                console.error('No live video track available!');
+                alert('Camera track not available. Try refreshing the page.');
+                return;
             }
             
             isVideoEnabled = true;
@@ -362,6 +348,7 @@ async function toggleVideo() {
                 const videoSender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
                 if (videoSender) {
                     const blackTrack = createBlackVideoTrack();
+                    activeBlackTracks.push(blackTrack);
                     await videoSender.replaceTrack(blackTrack);
                     console.log('Replaced with black video track');
                 }
@@ -465,10 +452,20 @@ function endCall() {
         screenStream = null;
     }
     
+    // Stop all black tracks
+    activeBlackTracks.forEach(track => {
+        try {
+            track.stop();
+        } catch(e) {}
+    });
+    activeBlackTracks = [];
+    
     localVideo.srcObject = null;
     remoteVideo.srcObject = null;
     localSignalArea.value = '';
     remoteSignalArea.value = '';
+    
+    localVideo.style.filter = 'none';
     
     isAudioEnabled = true;
     isVideoEnabled = false;

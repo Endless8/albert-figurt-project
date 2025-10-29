@@ -111,9 +111,21 @@ function createPeerConnection() {
         
         const stream = event.streams[0];
         
-        // Always update the remote video srcObject to ensure we get new tracks
-        remoteVideo.srcObject = stream;
-        console.log('Remote video srcObject set');
+        // Set srcObject only once when we get the first track
+        if (!remoteVideo.srcObject) {
+            remoteVideo.srcObject = stream;
+            console.log('Remote video srcObject set');
+            
+            // Force play after a small delay
+            setTimeout(() => {
+                remoteVideo.play().then(() => {
+                    console.log('Remote video playing successfully');
+                    setTimeout(() => {
+                        console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
+                    }, 500);
+                }).catch(e => console.error('Remote video play error:', e));
+            }, 100);
+        }
         
         // Monitor track state changes
         event.track.onended = () => {
@@ -133,14 +145,6 @@ function createPeerConnection() {
                 remoteVideo.style.opacity = '1';
             }
         };
-        
-        // Force play and log result
-        remoteVideo.play().then(() => {
-            console.log('Remote video playing successfully');
-            setTimeout(() => {
-                console.log('Remote video dimensions:', remoteVideo.videoWidth, 'x', remoteVideo.videoHeight);
-            }, 1000);
-        }).catch(e => console.error('Remote video play error:', e));
         
         updateStatus('connected', 'Connected');
     };
